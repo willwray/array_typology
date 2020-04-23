@@ -404,8 +404,8 @@ there are moves underway towards deprecation.
 ## Core Typology
 
 * [Core array `E[N]` and its associated compounds](#core-array-E[N]-and-its-associated-compounds)
-  * [`E[]` : Unknown bound / unbounded array type](#E[]-:-unknown-bound-/-unbounded-array-type)
-  * [`E[N]` : Bounded array](#E[N]-:-bounded-array)
+  * [`E[]` : Unknown bound / unbounded array type](#unbounded-array)
+  * [`E[N]` : Bounded array](#bounded-array)
   * [`E(&)[]` &nbsp;&nbsp;: Reference to unbounded array<br>`E(&)[N]` : Reference to array](#reference-to-array)
   * [`E(*)[]` &nbsp;&nbsp;: Pointer to unbounded array<br>`E(*)[N]` : Pointer to array](#pointer-to-array)
 
@@ -433,7 +433,7 @@ Decay       E(&)[N] -- E(&)[] -> E*  pointer
 Weaker types to the right, losing extent and then, reaching  
 bottom, losing array-ness with full decay-to-pointer type `E*`
 
-#### `E[]` : Unknown bound / unbounded array type
+<h4 id="unbounded-array"><code>E[]</code> : Unknown bound / unbounded array type</h4>
 
 `E[]` is the 'unbounded' or 'unknown bound' array type.  
 It is only usable as a type; there can be no object of the type.
@@ -467,7 +467,7 @@ int x[]{1,2,3}; // Size deduced from initializer
 //   ^^ Not an unbounded array; decltype(x)=int[3]
 ```
 
-#### `E[N]` : Bounded array
+<h4 id="bounded-array"><code>E[N]</code> : Bounded array</h4>
 
 `E[N]` is the array value type, an object type, a simple compound  
 aggregate type, a contiguous sequence
