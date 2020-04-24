@@ -402,6 +402,9 @@ there are moves underway towards deprecation.
 
 ## Core Typology
 
+Let `E` be the array element type, any cv qualifers included,  
+and `N` the array extent, usually taken to be of type `size_t`.
+
 * [Core array `E[N]` and its associated compounds](#core-array-E[N]-and-its-associated-compounds)
   * [`E[]` : Unknown bound / unbounded array type](#unbounded-array)
   * [`E[N]` : Bounded array](#bounded-array)
@@ -409,9 +412,6 @@ there are moves underway towards deprecation.
   * [`E(*)[]` &nbsp;&nbsp;: Pointer to unbounded array<br>`E(*)[N]` : Pointer to array](#pointer-to-array)
 
 ### Core array `E[N]` and its associated compounds
-
-Let `E` be the array element type, any cv qualifers included,  
-and `N` the array extent, usually taken to be of type `size_t`.
 
 `E[N]` is a crystal formed of `N` contiguous constituent elements.  
 Its most infamous associated compound is decay product `E*`.  
@@ -434,11 +434,10 @@ bottom, losing array-ness with full decay-to-pointer type `E*`
 
 <h4 id="unbounded-array"><code>E[]</code> : Unknown bound / unbounded array type</h4>
 
-`E[]` is the 'unbounded' or 'unknown bound' array type.  
-It is only usable as a type; there can be no object of the type.
-
+Unbounded array type `E[]` is only usable as a type  
+i.e. it is not an object type; there can be no object of the type.  
 It is an incomplete type in that a declaration with this type is  
-incomplete and must be completed with a bound in a definition.
+incomplete and a definition must be completed with a bound:
 
 ```c++
 template <typename T>
@@ -456,7 +455,7 @@ to unbounded array _are_ complete types themselves; they refer
 to the initializing array whose known extent is lost in binding  
 (examples below).
 
-As a convenience, unbounded array syntax can be employed  
+As a convenience, unbounded array syntax may be employed  
 in a definition to allow deduction of size from the initializer:
 
 ```c++
@@ -466,9 +465,12 @@ int x[]{1,2,3}; // Size deduced from initializer
 //   ^^ Not an unbounded array; decltype(x)=int[3]
 ```
 
+The apparently incomplete type is completed immediately  
+ by the initializer so the actual declared type is complete.
+
 <h4 id="bounded-array"><code>E[N]</code> : Bounded array</h4>
 
-`E[N]` is the array value type, an object type, a simple compound  
+The array value type `E[N]` is an object type, a simple compound  
 aggregate type, a contiguous sequence
 of one element type.
 
@@ -476,7 +478,13 @@ Aggregate initialization, from a braced initializer list, is the only
 way to initialize a value of array type (currently, see [exceptions](#copy-semantics-lack-of)).
 
 Values of array type are unstable in use, eagerly decaying to a  
-pointer to the first element of the array (examples below).
+pointer to the first element of the array.
+
+For example, attempts to pass an array by-value to function  
+induce decay-copy of the array argument, i.e. decay-to-pointer  
+(see [The Formal Parameter fiasco](#the-formal-parameter-fiasco) for this nasty C++ gotcha)  
+(if it were possible to pass array by value then it would incur a  
+costly copy for large arrays so could be a performace gotcha).  
 
 <h4 id="reference-to-array"><code>E(&)[]</code> &nbsp;&nbsp;: Reference to unbounded array<br>
 <code>E(&)[N]</code> : Reference to array</h4>
@@ -484,10 +492,9 @@ pointer to the first element of the array (examples below).
 References act as aliases to their bound array;  
 they act just as the array itself, including decay-to-pointer.
 
-Pass-by-reference is the classic idiomatic C++ way to pass arrays.  
-Pass-by-value induces decay-copy, i.e. decay-to-pointer (if it were  
-possible to pass array by value then it'd be costly for large arrays).  
-(`std::span` or ranges are now alternatives to pass-by-reference.)
+Pass-by-reference is the classic idiomatic C++ way to pass arrays  
+(C doesn't have reference types so it's pass-by-pointer in C)  
+(C++ now has `std::span` and Ranges as alternatives).
 
 Const lvalue or rvalue ref `const&`, `&&` can bind to rvalue arrays.  
 This includes initializer lists, which are materialized to temporary  
@@ -497,13 +504,13 @@ array rvalue, which then bind with lifetime extension:
 int (&&rv3)[3] = {1,2,3}; // int(&&)[3]
 ```
 
-C++20 newly allows reference-to-unbounded-array `E(&)[]`  
-to bind to an array value:
+C++20 allows reference-to-unbounded-array `E(&)[]` to bind to  
+array values ([P0388](https://wg21.link/p0388) _Permit conversions to arrays of unknown bound_):
 
 ```c++
-int (&&rvu)[] = {1,2,3};  // int(&&)[]
-int (&rva)[] = rv3;       // int(&)[]
-char const(&str)[] = "c-string";
+int (&&rvu)[] = {1,2,3};     // int(&&)[]
+int (&lvu)[] = rv3;          // int(&)[]
+char const(&stru)[] = "C++"; // char const(&)[]
 ```
 
 Unbounded array is _not_ being employed here for size-deduction;  
@@ -513,21 +520,35 @@ The extent is lost in binding, 'size-erased' away from the initializer.
 <h4 id="pointer-to-array"><code>E(*)[]</code> &nbsp;&nbsp;: Pointer to unbounded array<br>
 <code>E(*)[N]</code> : Pointer to array</h4>
 
-Pointer `p` is one step removed from pointee `a`;
+Pointers are more regular than references;
+
+* Pointer assignment simply reassigns the pointer value  
+(a reference assigns-through to referee)  
+(a reference itself cannot be 'reseated' post initialization)
+* Pointers can be stored in arrays or other containers  
+* Pointer members don't disable class-default copy-assign  
+
+However, unlike a reference, which acts as an alias to referee,  
+pointer `p` is one compound level above pointee `a`;
 
 * address-of is needed to initialize `auto* p = &a;`
 * then a dereference prior to use `*p`
 
+Other differences:  
 Pointer-to-array is immune from array decay-to-pointer.  
-Pointers are nullable so can represent optional or exceptional value.  
-Pointers are more regular than references (a reference member  
-disables default copy-assign). Apart from the preceding differences,  
-pass-by-pointer-to-array is equivalent to pass-by-reference-to-array.
+Pointers are nullable so can represent optional or exceptional value.
 
-### Example declarations and definitions
+Apart from the preceding differences,
+pass-by-pointer-to-array  
+is more or less equivalent to pass-by-reference-to-array.
+
+### Declared types and initializations
+
+Array type declarations and definitions have 'noisy' syntax.  
+Using `auto` where possible helps a little:
 
 ```c++
-E a[N]; // Array E[N]
+E a[N]{0,1};  // a : E[N]    Array 
 
 auto* p = &a; // p : E(*)[N] Pointer to bounded array
 E(*q)[] = &a; // q : E(*)[]  Pointer to unbounded array
@@ -535,14 +556,42 @@ auto& r = a;  // r : E(&)[N] Reference to bounded array
 E(&u)[] = a;  // u : E(&)[]  Reference to unbounded array
 ```
 
-A pointer `p`,`q` or a reference `r`,`u` to array may only be initialized  
-by an array, not by an `E*` pointer, so they are 'stronger' types.  
-Initializations `q` and `u` are newly permitted in C++20  
-(conversion to pointer or reference to unbounded array).
+Using `using` helps more. Here are the same declarations:
 
-### `auto` copy-init 'decay-copy'
+```c++
+using A = E[N];
+using U = E[];
 
-`auto`-deduced copy-init from the definined values, to induce decay:
+extern A a;   // a : E[N]    Array
+
+extern A* p;  // p : E(*)[N] Pointer to bounded array
+extern U* q;  // q : E(*)[]  Pointer to unbounded array
+extern A& r;  // r : E(&)[N] Reference to bounded array
+extern U& u;  // u : E(&)[]  Reference to unbounded array
+```
+
+The variables declared here are used as an ongoing example.  
+Here are definitions with initializations (code is here [CE](https://godbolt.org/z/_XzR_L)):
+
+```c++
+A a{0,1};  // a : E[N]    Array value, aggregate init
+
+A* p = &a; // p : E(*)[N] Pointer to bounded array
+U* q = &a; // q : E(*)[]  Pointer to unbounded array
+A& r = a;  // r : E(&)[N] Reference to bounded array
+U& u = a;  // u : E(&)[]  Reference to unbounded array
+```
+
+Pointers `p`, `q` or references `r`, `u` to array may only be initialized  
+by an array, not by an `E*` pointer, so they are 'stronger' types.
+
+Initializations of `q` and `u` are newly allowed in C++20  
+[P0388](https://wg21.link/p0388) _Permit conversions to arrays of unknown bound_  
+(P0388 is only implemented in gcc at the time of writing).
+
+### Decayed types
+
+An `auto` declaration does 'decay-copy' from the initializing type:
 
 ```c++
 auto d = a;  // E* <- E[N] array decay-to-pointer E*
@@ -553,33 +602,28 @@ auto dr = r; // E*      Decay for reference-to-array
 auto du = u; // E*      Decay for reference-to-array
 ```
 
-Array value `a` suffers decay-copy, as do references to array, `r`, `u`.  
+Array value `a` suffers decay, as do references to array, `r`, `u`.  
 Pointers-to-array avoid decay by already being pointers, `p`, `q`.
 
 ### Usage: indexing
+
+References to array `r`, `u` and decayed pointer value `d`  
+all behave exactly as array `a` itself in indexing usage.
 
 ```c++
 int& ai = a[i];
 int& di = d[i];
 
-int& pi = *p[i]; // pointer-to-array, must deref
-int& qi = static_cast<E(&)[]>(*q)[i]; // see note
+int& pi = (*p)[i]; // pointer-to-array, must deref
+int& qi = (*q)[i]; // pointer-to-array, must deref
 int& ri = r[i];
 int& ui = u[i];
 ```
 
-References to array `r`, `u` and decayed pointer value `d`  
-all behave exactly as array `a` itself in indexing usage.
-
 Pointers to array, however, are one compound-level above array;  
 initialization had to take the address of the target array, `p = &a`,  
-and, now, prior to usage:
-
-* pointer-to-bounded-array `p` must be dereferenced, `*p`
-* pointer-to-unbounded-array, `q` must be either  
-dereferenced and cast, `static_cast<E(&)[]>(*q)`, or  
-cast and dereferenced, `*static_cast<E(*)[N]>(q)`  
-(as an unbounded array cannot be indexed directly).  
+and, now, before index usage it must be dereferenced as `(*p)[i]`  
+(parens needed as index `[i]` binds stonger than dereference `*`).
 
 ### Pointer ambiguity
 
