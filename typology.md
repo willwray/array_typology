@@ -14,7 +14,7 @@ The substrate underlying all objects is array of `char`.
 
 On today's menu:
 
-* For starters; [Phenomena](#the-phenomena)
+* For starters; [Phenomena](#array-phenomena)
   * A census of the senseless, restricted, irregular state of today's arrays
 * Main course; [Core Typology](#core-typology)
   * A classification of built-in types associated with array
@@ -30,7 +30,7 @@ On tomorrow's menu:
 Frequent reference is made to proposal
 [P1997](https://wg21.link/p1997) _Remove restrictions on array_
 
-## The Phenomena
+## Array Phenomena
 
 * [Static size](#static-size)
 * [Non-zero size](#non-zero-size)
@@ -83,7 +83,7 @@ A C++ trailing FAM would be possible with [P0722](https://wg21.link/p0722) _Effi
 
 #### Array new
 
-So, in C++, dynamic size calls for dynamic allocation:
+So, in C++, dynamic size calls for dynamic allocation [CE](https://godbolt.org/z/Vz-bQY):
 
 ```c++
 int n = 2;        // Dynamic size ... is:
@@ -92,11 +92,12 @@ E* pe = new E[n]; // Accepted by operator new[]
 delete(pe);       // (don't forget to delete).
 ```
 
-Or placement `new[]` into a sufficiently-sized buffer:
+Or placement `new[]` into a sufficiently-sized buffer (barely qualifies as dynamic) [CE](https://godbolt.org/z/CApZ6-):
 
 ```c++
 char buf[8];
-float* floats_ptr = (buf) new float[]{1.,2.};
+float* floats_ptr = new(buf) float[n];
+std::destroy(floats_ptr,floats_ptr+n);
 ```
 
 The `new`'d size may be zero, `new E[0]`, or deduced from the initializer as above.
@@ -129,7 +130,7 @@ what should `std::begin(i42)` return?
 
 ### Copy semantics, lack of
 
-Built-in array copies only in very specific contexts (any missing here?):
+Built-in array copies only in very specific contexts [CE](https://godbolt.org/z/-krjEF) (any missing here?):
 
 ```c++
 // string-literal copy-inits char array
@@ -162,8 +163,7 @@ a2 = b2;        // copy-assign from array lvalue
 Say you have an array member of a class.
 How do you initialize it from a same-array-type constructor argument in the constructor initializer list?
 
-None of the options are ideal:
-
+None of the options are ideal [CE](https://godbolt.org/z/maTtAk):
 
 ```c++
 // (1) Expand the array elements by hand
@@ -184,23 +184,24 @@ template <typename X, size_t N> struct XN {
 
 // (3) For a single array member, reinterpret_cast
 //     the arg to this class type and copy construct
-template <typename X, size_t N> struct XN {
+template <typename X, size_t N> struct XxN {
   X x[N];
-  XN(X const(&a)[N])
-   : XN(*reinterpret_cast<XN const*>(&a)) {} // !!
+  XxN(X const(&a)[N])
+   : XxN(*reinterpret_cast<XxN const*>(&a)) {} // !!
 };
 
 // (4) Give up and wrap the array member and the arg
-template <typename X, std::size_t N> struct XN {
-  struct XN_wrap { X x[N]; } x;
-  constexpr XN(XN_wrap const& a) : x{a} {}
+template <typename X, std::size_t N> struct XW {
+  struct wrapXN { X x[N]; } x;
+  constexpr XW(wrapXN const& a) : x{a} {}
 };
 
 // (5) Give up and write a copy loop in the body
-template <typename X, size_t N> struct XN {
+template <typename X, size_t N> struct Xcp {
   X x[N];
-  XN(X const(&a)[N]) {for (auto& e:a) x[&e-a] = e;}
+  Xcp(X const(&a)[N]) {for (auto& e:a) x[&e-a] = e;}
 };
+
 ```
 
 With P1997:
@@ -215,14 +216,13 @@ template <typename X, size_t N> struct XN {
 ### Swap
 
 There is a `std::swap` overload for array,
-added in 2008 [LWG issue 809](https://cplusplus.github.io/LWG/issue809) _std::swap should be overloaded for array types_.
-
+added in 2008 [LWG issue 809](https://cplusplus.github.io/LWG/issue809) _std::swap should be overloaded for array types_:
 ```c++
 int a[2]{0,1}, b[2]{2,3};
 std::swap(a,b); // In <utility> or <algorithm>
 ```
 
-This works recursively for nested arrays.
+This works recursively for nested arrays [CE](https://godbolt.org/z/WQCEsR).
 
 ### Assignment, lack of
 
@@ -233,7 +233,7 @@ int a[2]{}, b[2]{0,1};
 a = b;         // error: invalid array assignment
 ```
 
-Except as part of a class assign:
+Except as part of a class assign [CE](https://godbolt.org/z/FrfpzW):
 
 ```c++
 class int2 {int a[2];}; // dummy class
@@ -245,7 +245,7 @@ P1997 permits `a = b;`
 ### Comparison, lack of
 
 Built-in array does not compare!
-Instead it decays to pointer and pointer comparison is done. Pointer comparison is deprecated. Warnings or errors can be raised:
+Instead it decays to pointer and pointer comparison is done. Pointer comparison is deprecated. Warnings or errors can be raised [CE](https://godbolt.org/z/emXBet):
 
 ```c++
 char hi[]{"hi"}, ho[]="ho";
@@ -263,7 +263,7 @@ e.g. how should matrices of floating-point values compare?
 
 #### Member array comparison via `operator<=>()`
 
-Member `operator<=>()` for a class can be defaulted as an opt-in to compiler-generated comparisons:
+Member `operator<=>()` for a class can be defaulted as an opt-in to compiler-generated comparisons [CE](https://godbolt.org/z/sjwJa4):
 
 ```c++
 template <typename T, size_t N>
@@ -297,8 +297,7 @@ An assignment wrapper that accepts same-type rvalue allows rvalue assignment:
   assignable_ref{a} = {{1,2},{3,4}};
 ```
 
-The implementation below recurses down nested C-arrays:  
-https://godbolt.org/z/ZwZOGB
+The implementation below recurses down nested C-arrays [CE](https://godbolt.org/z/wf_PQY):
 
 ```c++
 template <typename T>
@@ -353,7 +352,7 @@ itself a lifetime-extended rvalue reference to array.
 To avoid the compiler detecting any dangle as UB,
 and compiling it away,
 the returned array is immediately copied by structured binding
-(which calls for another level of array-wrap unless you want to expand and bind the elements themselves):
+(which calls for another level of array-wrap unless you want to expand and bind the elements themselves) [CE](https://godbolt.org/z/3wHSaf):
 
 ```c++
 template <size_t N>
