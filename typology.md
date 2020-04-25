@@ -437,6 +437,10 @@ and `N` the array extent, usually taken to be of type `size_t`.
   * [`E[N]` : Bounded array](#bounded-array)
   * [`E(&)[]` &nbsp;&nbsp;: Reference to unbounded array<br>`E(&)[N]` : Reference to array](#reference-to-array)
   * [`E(*)[]` &nbsp;&nbsp;: Pointer to unbounded array<br>`E(*)[N]` : Pointer to array](#pointer-to-array)
+* [Declared types and initializations](#declared-types-and-initializations)
+* [Decayed types](#decayed-types)
+* [Indexing](#indexing)
+* [Pointer ambiguity](#pointer-ambiguity)
 
 ### Core array `E[N]` and its associated compounds
 
@@ -633,7 +637,7 @@ auto du = u; // E*      Decay for reference-to-array
 Array value `a` suffers decay, as do references to array, `r`, `u`.  
 Pointers-to-array avoid decay by already being pointers, `p`, `q`.
 
-### Usage: indexing
+### Indexing
 
 References to array `r`, `u` and decayed pointer value `d`  
 all behave exactly as array `a` itself in indexing usage.
