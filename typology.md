@@ -216,13 +216,40 @@ template <typename X, size_t N> struct XN {
 ### Swap
 
 There is a `std::swap` overload for array,
-added in 2008 [LWG issue 809](https://cplusplus.github.io/LWG/issue809) _std::swap should be overloaded for array types_:
+added in 2008
+[LWG issue 809](https://cplusplus.github.io/LWG/issue809) _std::swap should be overloaded for array types_:
 ```c++
 int a[2]{0,1}, b[2]{2,3};
 std::swap(a,b); // In <utility> or <algorithm>
 ```
 
 This works recursively for nested arrays [CE](https://godbolt.org/z/WQCEsR).
+
+### Ranges
+
+#### Free function begin, end, data, size, ssize
+
+`std::begin`, `std::end` since C++11, constexpr since C++14  
+`std::size`, `std::data` since C++17  
+`std::ssize` since C++20  
+`std::ranges` versions of all the above plus range concepts C++20
+
+Array is the original range.
+It works in range-for since C++11 by virtue of array overloads for free function begin and end.
+It is supported by C++20 ranges; it fully models the  `contiguous_range` concept [CE](https://godbolt.org/z/tKVY-Y)
+
+```c++
+auto rotate(std::ranges::contiguous_range auto& a)
+  -> decltype(a)& {
+  for (auto next = std::end(a)[-1]; auto& curr : a)
+     std::swap(curr,next);
+  return a;
+}
+int ints[]{1,2,3};
+
+for (int i : rotate(ints))
+    putchar('0' + i);    // 312
+```
 
 ### Assignment, lack of
 
@@ -544,6 +571,8 @@ is more or less equivalent to pass-by-reference-to-array.
 
 ### Declared types and initializations
 
+The declarations below are used as an ongoing example [CE](https://godbolt.org/z/_XzR_L):
+
 Array type declarations and definitions have 'noisy' syntax.  
 Using `auto` where possible helps a little:
 
@@ -570,8 +599,7 @@ extern A& r;  // r : E(&)[N] Reference to bounded array
 extern U& u;  // u : E(&)[]  Reference to unbounded array
 ```
 
-The variables declared here are used as an ongoing example.  
-Here are definitions with initializations (code is here [CE](https://godbolt.org/z/_XzR_L)):
+Here are definitions with initializations:
 
 ```c++
 A a{0,1};  // a : E[N]    Array value, aggregate init
@@ -591,7 +619,7 @@ Initializations of `q` and `u` are newly allowed in C++20
 
 ### Decayed types
 
-An `auto` declaration does 'decay-copy' from the initializing type:
+An `auto` declared copy does 'decay-copy' from the initializing type:
 
 ```c++
 auto d = a;  // E* <- E[N] array decay-to-pointer E*
@@ -635,27 +663,29 @@ Otherwise, more information is required in order to disambiguate.
 
 ### Properties
 
+#### Key
 
+**ini**: intrinsic - holds array elements internal to the type itself  
+**exi**: extrinsic - holds a handle to external array; 'view' / 'reference'
 
-* `E[N]` immediate, static, owning, no copy* or assign, ~~ptr compare~~, decay
-* `E(&)[N]` handle, static, non-owning, no copy or assign, ~~ptr compare~~, decay
-* `E(&)[]` handle, static, non-owning, no copy or assign, ~~ptr compare~~, decay
-* `E(*)[N]` handle, static, non-owning, shallow copy & assign, ptr compare
-* `E(*)[]` handle, static, non-owning, shallow copy & assign, ptr compare
-* `E*` handle, dynamic, non-owning, shallow copy & assign, ptr compare
-* `E*` handle, dynamic, owning, shallow copy & assign, ptr compare  
+* `E[N]` ini, static, owning, no copy* or assign, ~~ptr compare~~, decay
+* `E(&)[N]` exi, static, no-own, no copy or assign, ~~ptr compare~~, decay
+* `E(&)[]` exi, static, no-own, no copy or assign, ~~ptr compare~~, decay
+* `E(*)[N]` exi, static, no-own, shallow copy & assign, ptr compare
+* `E(*)[]` exi, static, no-own, shallow copy & assign, ptr compare
+* `E*` exi, dynamic, no-own, shallow copy & assign, ptr compare
+* `E*` exi, dynamic, owning, shallow copy & assign, ptr compare  
   * `= new E[N]` 'owning' in that it points to an allocation
 
 
 Array-related types, listed from strongest, most static, to weakest, most dynamic:
 
-|Type     |Ref   |S/D   |Own|copy/`=`   |`==`      |Decay   |
-|----     |:----:|:----:|:-:|:------:   |---       |:--:    |
-|`E[N]`   |value |static|own|no* no     |ptr*      | :bomb: |
-|`E(&)[N]`|handle|static|no |no* no     |ptr*      | :bomb: |
-|`E(&)[]` |handle|static|no |  no       |ptr*      | :bomb: |
-|`E(*)[N]`|handle|static|no |ptr :bomb: |ptr :bomb:|        |
-|`E(*)[]` |handle|static|no |ptr :bomb: |ptr :bomb:|        |
-|`E*`     |handle|dyn   |no |ptr :bomb: |ptr :bomb:|        |
-|`E* =`<br>`new E[n]`     |handle|dyn   |own|ptr :bomb: |ptr :bomb:|        |
-
+|Type     |ini|own|dyn|copy|`=`   |`==`      |Decay |
+|----     |:-:|:-:|:-:|:--:|:----:|:--------:|:----:|
+|`E[N]`   |ini|own|   |no*|no     |ptr*      |:bomb:|
+|`E(&)[N]`|   |   |   |no*|no     |ptr*      |:bomb:|
+|`E(&)[]` |   |   |   |no |no     |ptr*      |:bomb:|
+|`E(*)[N]`|   |   |   |ptr|:bomb: |ptr :bomb:|      |
+|`E(*)[]` |   |   |   |ptr|:bomb: |ptr :bomb:|      |
+|`E*`     |   |   |dyn|ptr|:bomb: |ptr :bomb:|      |
+|`E*=new E[n]`|   |own|dyn|ptr|:bomb: |ptr :bomb:|        |
