@@ -9,7 +9,7 @@ What it is in C++20 and what it may be in C++23.
 
 In C++, built-in array is an atypical yet phenomenal type.
 Much maligned, resented as a vestige from C and with (deranged) calls to deprecate it in favour of std::array (or Ranges),
-it is fundamental part of the core language.
+it is a fundamental part of the core language.
 The substrate underlying all objects is array of `char`.
 
 On today's menu:
@@ -20,8 +20,9 @@ On today's menu:
   * A classification of built-in types associated with array
 * Just desserts; [Class Typology](#class-typology)
   * A delicious assortment of array-like classes
-* Post~~mortem~~prandial Epilogue;
-  * [Val O'Ray](https://en.cppreference.com/w/cpp/numeric/valarray) sings Eulogy for the Irregular Span
+* Post~~mortem~~prandial [Epilogue](#epilogue);
+  * [Val O'Ray](https://en.cppreference.com/w/cpp/numeric/valarray) recites
+  Eulogy for the Irregular Span
 
 On tomorrow's menu:
 
@@ -37,31 +38,36 @@ Frequent reference is made to proposal
 * [Dynamic size](#dynamic-size)
   * [Array new](#array-new)
 * [Multi-dimensional array, lack of](#multi-dimensional-array-lack-of)
+* [Aggregate nature](#aggregate-nature)
 * [Copy semantics, lack of](#copy-semantics-lack-of)
+  * [Array decay to pointer](#array-decay-to-pointer)
   * [Member array initialization conundrum](#member-array-initialization-conundrum)
 * [Swap](#swap)
+* [Ranges](#ranges)
+  * [Free function begin, end, data, size, ssize](#free-function-begin-end-data-size-ssize)
 * [Assignment, lack of](#assignment-lack-of)
 * [Comparison, lack of](#comparison-lack-of)
   * [Member array comparison via operator<=>()](#member-array-comparison-via-operator<=>())
   * [Wrappers for assignment and comparison](#wrappers-for-assignment-and-comparison)
+* [Structured binding](#structured-binding)
 * [Return from function, lack of](#return-from-function-lack-of)
   * [The not-so-great array return hack](#the-not-so-great-array-return-hack)
 * [The Formal Parameter fiasco](#the-formal-parameter-fiasco)
 
 ### Static size
 
-In C++ built-in arrays are static-sized (barring extensions, see [Dynamic size](#dynamic-size)).
+C++ arrays are static-sized (barring extensions, see [Dynamic size](#dynamic-size)).
 
 ### Non-zero size
 
 Static size is non-zero (barring extensions).
 
-The non-zero-size restriction could be relaxed for arrays now with C++20's `[[no_unique_address]]` attribute
-(I don't know of a proposal),
-useful in practice as it eliminates special cases.
+The non-zero-size array restriction could be relaxed with C++20's `[[no_unique_address]]` attribute
+(proposal?).
+This would be useful in practice to eliminate special cases.
 E.g. `std::array`'s zero-size specialization is tricky to implement correctly with stable begin and end iterators.
 
-Implementations already allow array of zero size as a [C extension](https://gcc.gnu.org/onlinedocs/gcc/Zero-Length.html) so there is existing practice.
+Implementations already allow zero-size array as a [C extension](https://gcc.gnu.org/onlinedocs/gcc/Zero-Length.html) so there is existing practice.
 Note that these are truly zero-sized,
 `sizeof(int[0]) == 0`, unlike empty classes which must have sizeof at least one.
 
@@ -109,28 +115,43 @@ In C++20 `new` is allowed in constexpr context, though constexpr allocations can
 ### Multi-dimensional array, lack of
 
 So-called multi-dimensional C-arrays are really nested 1D arrays.
-The storage layout of `E[M][N]` is not a contiguous range of `E`s; it is a contiguous 1D array of `M` contiguous 1D arrays of `N` `E`s
+The storage layout of `E[M][N]` is not a contiguous range of elements; it is a contiguous 1D array of `M` contiguous 1D arrays of `N` elements
 (the compiler may add padding between subarrays).
-C-array has 'subobject' semantics in that any set of indices, of any rank, address an actual object; a subarray subobject.
-This is rarely needed, the downside being that non-contiguous layout
-is constraining and often suboptimal for multi-dimensional usage.
 
-One could imagine generalizing the built in array type with multiple static extents:
+So, regardless of rank, array has 'subobject' semantics
+in that any set of indices address an actual object - a subarray subobject.
+The hierarchical design is elegant but constraining for
+multi-dimensional usage;
+recursive access is required and can give suboptimal codegen.
+On the other hand, with contiguous layout,
+mid-rank subarrays can no longer be objects.
 
-```c++
-using int42 = int[4,2];
-int42 i42{{1,2},{3,4},{5,6},{7,8}};
-i42[1,2] = 12;
-```
+Conclusion; multi-dimensional arrays with contiguous layout are best left as library types.
 
-with `[4,2]` implying 8 elements in contiguous layout.
-However, contiguous layout as a single `int[8]` object would mean that mid-rank subarrays are no longer objects;
-what should `std::begin(i42)` return?
+### Aggregate nature
 
+As an aggregate type with no copy-init, the only means of initializing an array is
+[aggregate initialization](https://en.cppreference.com/w/cpp/language/aggregate_initialization) using braces or, since C++20, parens.
+
+Aggregate initialization has pros and cons.
+Elements are directly copy-initialized so there's no need for forwarding.
+If there are missing initializers then the corresponding trailing elements are default constructed.
+If the element type has no default constructor then all initializers must be provided.
+It is unwieldy for large arrays.
 
 ### Copy semantics, lack of
 
-Built-in array copies only in very specific contexts [CE](https://godbolt.org/z/-krjEF) (any missing here?):
+#### Array decay to pointer
+
+Attempts to copy an array, or pass by value, result in decay-to-pointer [CE](https://godbolt.org/z/S3L9ZP):
+
+```c++
+// Array decay to pointer
+int k[9]{9,9,9};
+auto dk = k;  // decltype(dk) = int*
+```
+
+Built-in array copies only in very specific contexts [CE](https://godbolt.org/z/ZizY_f) (any missing here?):
 
 ```c++
 // string-literal copy-inits char array
@@ -142,11 +163,18 @@ struct A { int a[2]; } a{0,1};
 auto b = a;
 
 // auto structured binding copies array rhs
-constexpr int a12[1][2]{{0,1}};
-auto [a2] = a12; // mutable copy int[2]{0,1}
+constexpr int xy[]{1,2};
+auto [x,y] = xy; // bindings to mutable copy int[2]{1,2}
 
 // lambda copy-capture copies arrays
 auto& ha = [ho]()mutable->auto&{return ho;}();
+```
+
+A devious way to copy an array [CE](https://godbolt.org/z/6oGTm7):
+
+```c++
+int a[]{1,2,3};
+auto [a_cp] = reinterpret_cast<decltype(a)(&)[1]>(a);
 ```
 
 P1997 proposes to allow array copy:
@@ -345,6 +373,10 @@ template <typename A>
 assignable_ref(A&&) -> assignable_ref<A>;
 ```
 
+### Structured binding
+
+Array is directly supported as a target for structured binding.
+
 ### Return from function, lack of
 
 Array is not permitted as a function return value.
@@ -421,7 +453,7 @@ int main() { return len("bye-bye"); }
 This program computes strlen of "bye-bye", correctly on most platforms...
 
 As with function parameters, template 'NTTP' parameters of array type are also silently adjusted-to-pointer,
-ingoring any extent.
+ignoring any extent.
 (Can't blame that on C.)
 
 Maybe, one day, this will be the former Formal Parameter fiasco;
@@ -429,7 +461,7 @@ there are moves underway towards deprecation.
 
 ## Core Typology
 
-Let `E` be the array element type, any cv qualifers included,  
+Let `E` be the array element type, any cv qualifiers included,  
 and `N` the array extent, usually taken to be of type `size_t`.
 
 * [Core array `E[N]` and its associated compounds](#core-array-E[N]-and-its-associated-compounds)
@@ -515,7 +547,7 @@ For example, attempts to pass an array by-value to function
 induce decay-copy of the array argument, i.e. decay-to-pointer  
 (see [The Formal Parameter fiasco](#the-formal-parameter-fiasco) for this nasty C++ gotcha)  
 (if it were possible to pass array by value then it would incur a  
-costly copy for large arrays so could be a performace gotcha).  
+costly copy for large arrays so could be a performance gotcha).  
 
 <h4 id="reference-to-array"><code>E(&)[]</code> &nbsp;&nbsp;: Reference to unbounded array<br>
 <code>E(&)[N]</code> : Reference to array</h4>
@@ -653,43 +685,43 @@ int& ui = u[i];
 ```
 
 Pointers to array, however, are one compound-level above array;  
-initialization had to take the address of the target array, `p = &a`,  
+on initialization the address of the target array is taken, `p = &a`,  
 and, now, before index usage it must be dereferenced as `(*p)[i]`  
-(parens needed as index `[i]` binds stonger than dereference `*`).
+(parens needed as index `[i]` binds stronger than dereference `*`).
 
 ### Pointer ambiguity
 
 By including pointer-to-bounded-array `E(*)[N]` as an associated type  
 above we also introduce an ambiguity with the decayed pointer `E*`;  
 given one of these pointer types then what is the element type?  
-There's no ambiguity if only 1D arrays are in play.  
-Otherwise, more information is required in order to disambiguate.
+(There's no ambiguity if only 1D arrays are in play.)  
+More information is required in order to disambiguate.
 
-### Properties
+### Properties summary
 
-#### Key
+The array type `E[N]` is an 'intrinsic' value;  
+it holds array elements internal to the type itself.  
+The other associated types are all 'extrinsic';  
+pointers or references to external array values.
 
-**ini**: intrinsic - holds array elements internal to the type itself  
-**exi**: extrinsic - holds a handle to external array; 'view' / 'reference'
+The array type `E[N]` is owning.  
+An element pointer `E*` _may_ be owning (if it points to an allocation).  
+The remaining types are non-owning (they can't point to an allocation).
 
-* `E[N]` ini, static, owning, no copy* or assign, ~~ptr compare~~, decay
-* `E(&)[N]` exi, static, no-own, no copy or assign, ~~ptr compare~~, decay
-* `E(&)[]` exi, static, no-own, no copy or assign, ~~ptr compare~~, decay
-* `E(*)[N]` exi, static, no-own, shallow copy & assign, ptr compare
-* `E(*)[]` exi, static, no-own, shallow copy & assign, ptr compare
-* `E*` exi, dynamic, no-own, shallow copy & assign, ptr compare
-* `E*` exi, dynamic, owning, shallow copy & assign, ptr compare  
-  * `= new E[N]` 'owning' in that it points to an allocation
+An element pointer `E*` can point to a range of dynamic size.  
+All other types are static; they can only refer to an array (=> static size).
+
+There is no array copy. The array type, and references, decay-copy.  
+There are no array assignment or comparison operators.
 
 
-Array-related types, listed from strongest, most static, to weakest, most dynamic:
 
-|Type     |ini|own|dyn|copy|`=`   |`==`      |Decay |
-|----     |:-:|:-:|:-:|:--:|:----:|:--------:|:----:|
-|`E[N]`   |ini|own|   |no*|no     |ptr*      |:bomb:|
-|`E(&)[N]`|   |   |   |no*|no     |ptr*      |:bomb:|
-|`E(&)[]` |   |   |   |no |no     |ptr*      |:bomb:|
-|`E(*)[N]`|   |   |   |ptr|:bomb: |ptr :bomb:|      |
-|`E(*)[]` |   |   |   |ptr|:bomb: |ptr :bomb:|      |
-|`E*`     |   |   |dyn|ptr|:bomb: |ptr :bomb:|      |
-|`E*=new E[n]`|   |own|dyn|ptr|:bomb: |ptr :bomb:|        |
+|Type     |ini|own|dyn|a[i]|copy|`=`   |`==`      |Decay |
+|----     |:-:|:-:|:-:|:-:|:--:|:----:|:--------:|:----:|
+|`E[N]`   |ini|own|   |`a[i]`|no |no     |ptr*      |:bomb:|
+|`E(&)[N]`|   |   |   |`r[i]`|ref|no     |ptr*      |:bomb:|
+|`E(&)[]` |   |   |   |`u[i]`|ref|no     |ptr*      |:bomb:|
+|`E(*)[N]`|   |   |   |`(*p)[i]`|ptr|:bomb: |ptr :bomb:|      |
+|`E(*)[]` |   |   |   |`(*q)[i]`|ptr|:bomb: |ptr :bomb:|      |
+|`E*`     |   |   |dyn|`d[i]`|ptr|:bomb: |ptr :bomb:|      |
+|`E*=new E[n]`|   |own|dyn|`m[i]`|ptr|:bomb: |ptr :bomb:|        |
