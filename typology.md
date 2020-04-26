@@ -473,6 +473,7 @@ and `N` the array extent, usually taken to be of type `size_t`.
 * [Decayed types](#decayed-types)
 * [Indexing](#indexing)
 * [Pointer ambiguity](#pointer-ambiguity)
+* [Properties summary](#properties-summary)
 
 ### Core array `E[N]` and its associated compounds
 
@@ -714,8 +715,6 @@ All other types are static; they can only refer to an array (=> static size).
 There is no array copy. The array type, and references, decay-copy.  
 There are no array assignment or comparison operators.
 
-
-
 |Type     |ini|own|dyn|a[i]|copy|`=`   |`==`      |Decay |
 |----     |:-:|:-:|:-:|:-:|:--:|:----:|:--------:|:----:|
 |`E[N]`   |ini|own|   |`a[i]`|no |no     |ptr*      |:bomb:|
@@ -725,3 +724,36 @@ There are no array assignment or comparison operators.
 |`E(*)[]` |   |   |   |`(*q)[i]`|ptr|:bomb: |ptr :bomb:|      |
 |`E*`     |   |   |dyn|`d[i]`|ptr|:bomb: |ptr :bomb:|      |
 |`E*=new E[n]`|   |own|dyn|`m[i]`|ptr|:bomb: |ptr :bomb:|        |
+
+## Class Typology
+
+The C++ standard library provides a few low-level array-like types:
+
+* `std::array<T,N>` wraps C-array, prevents decay, enables copy
+* `std::unique_ptr<T[]>` owns a heap array of runtime length
+* `std::span<T,N>` non-owning range of elements of static length
+* `std::span<T>` non-owning range of elements of runtime length
+* `std::string_view` span of immutable `char`, shrinkable length
+
+Length is either fixed at compile-time or set at runtime, as an upper limit;  
+`span` provides subspan and `string_view` supports dynamic shrinkage.  
+Runtime growth is considered out-of-scope for low-level array types.  
+Of the growable container types, the two most relevant are:
+
+* `std::vector<T>` owning dynamic length
+* `std::valarray<T>` owning dynamic length, numeric, RIP
+
+All provide indexing `operator[](int)` characteristic of array.  
+(So do random-access iterators, akin to pointers into arrays.)
+
+None are well suited for multi-dimensional data.  
+For multi-dim use cases, these are proposed:
+
+* `std::mdarray` a multi-dimensional array sibling of...
+* `std::mdspan` a multi-dimensional, non-owning, span
+
+ToDo: classify and list properties
+
+## Epilogue
+
+ToDo:
