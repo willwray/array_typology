@@ -95,7 +95,7 @@ So, in C++, dynamic size calls for dynamic allocation [CE](https://godbolt.org/z
 int n = 2;        // Dynamic size ... is:
 //E e[n];         // Not accepted in standard C++
 E* pe = new E[n]; // Accepted by operator new[]
-delete(pe);       // (don't forget to delete).
+delete[](pe);     // (don't forget to delete).
 ```
 
 Or placement `new[]` into a sufficiently-sized buffer (barely qualifies as dynamic) [CE](https://godbolt.org/z/CApZ6-):
@@ -130,14 +130,23 @@ Conclusion; multi-dimensional arrays with contiguous layout are best left as lib
 
 ### Aggregate nature
 
-As an aggregate type with no copy-init, the only means of initializing an array is
-[aggregate initialization](https://en.cppreference.com/w/cpp/language/aggregate_initialization) using braces or, since C++20, parens.
+As an aggregate type with no copy-init, the only means of initializing an array is element-wise
+[aggregate initialization](https://en.cppreference.com/w/cpp/language/aggregate_initialization) using braces 
+(or parens since C++20, with some differences).
+The initialization is nested;
+elements of array type can only be initialized by a nested braced initializer list.
 
-Aggregate initialization has pros and cons.
-Elements are directly copy-initialized so there's no need for forwarding.
-If there are missing initializers then the corresponding trailing elements are default constructed.
-If the element type has no default constructor then all initializers must be provided.
-It is unwieldy for large arrays.
+Elements (non-array type) are directly copy-initialized.
+Initializations are sequenced, in order.
+Element initialization from a braced initializer is non-narrowing -
+narrowing conversions are not allowed.
+If there are missing initializers then the corresponding trailing elements are default constructed
+(if the element type has no default constructor then all initializers must be provided).
+
+Aggregate initialization is unwieldy for large arrays.
+However, an array is trivially constructible if its elements are.
+Large arrays of trivial type are often either value constructed default constructed
+for 'two-phase initialization'.
 
 ### Copy semantics, lack of
 
