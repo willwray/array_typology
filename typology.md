@@ -179,11 +179,19 @@ auto [x,y] = xy; // bindings to mutable copy int[2]{1,2}
 auto& ha = [ho]()mutable->auto&{return ho;}();
 ```
 
-A devious way to copy an array [CE](https://godbolt.org/z/6oGTm7):
+C++20's `bit_cast` will copy arrays of trivially copyable element type
+[CE](https://godbolt.org/z/TP-gzs):
 
 ```c++
-int a[]{1,2,3};
-auto [a_cp] = reinterpret_cast<decltype(a)(&)[1]>(a);
+int a[]{1,2,3,4};
+auto&& a_cp = std::bit_cast<decltype(a)>(a);
+```
+
+Back-port `bit_cast` implementations using `memcpy` are not constexpr.  
+A reinterpret cast and structured-bind copy have the same effect [CE](https://godbolt.org/z/i9kzPS):
+
+```c++
+auto [a_cp] = (decltype(a)(&)[1]) a; // Not constexpr
 ```
 
 P1997 proposes to allow array copy:
