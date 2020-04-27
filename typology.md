@@ -136,17 +136,16 @@ As an aggregate type with no copy-init, the only means of initializing an array 
 The initialization is nested;
 elements of array type can only be initialized by a nested braced initializer list.
 
-Elements (non-array type) are directly copy-initialized.
-Initializations are sequenced, in order.
-Element initialization from a braced initializer is non-narrowing -
-narrowing conversions are not allowed.
-If there are missing initializers then the corresponding trailing elements are default constructed
+Elements (non-array type) are directly copy-initialized in sequence.
+Initialization from a braced initializer is non-narrowing.
+If there are missing initializers then the corresponding trailing elements are value initialized
 (if the element type has no default constructor then all initializers must be provided).
+If the object is an array of unknown size then the size is deduced from the initializer list.
 
 Aggregate initialization is unwieldy for large arrays.
 However, an array is trivially constructible if its elements are.
-Large arrays of trivial type are often either value constructed default constructed
-for 'two-phase initialization'.
+Large arrays of trivial type are often either value constructed or default constructed
+as the first step in a 'two-phase initialization'.
 
 ### Copy semantics, lack of
 
@@ -160,7 +159,7 @@ int k[9]{9,9,9};
 auto dk = k;  // decltype(dk) = int*
 ```
 
-Built-in array copies only in very specific contexts [CE](https://godbolt.org/z/ZizY_f) (any missing here?):
+There are a few very specific contexts in which the language will copy arrays [CE](https://godbolt.org/z/ZizY_f) (any missing here?):
 
 ```c++
 // string-literal copy-inits char array
@@ -179,19 +178,18 @@ auto [x,y] = xy; // bindings to mutable copy int[2]{1,2}
 auto& ha = [ho]()mutable->auto&{return ho;}();
 ```
 
-C++20's `bit_cast` will copy arrays of trivially copyable element type
-[CE](https://godbolt.org/z/TP-gzs):
+In C++20 standard library, `bit_cast` will copy arrays of trivially copyable element type
+[CE](https://godbolt.org/z/TP-gzs).
+Prior implementations of `bit_cast` using `memcpy` are not constexpr -
+compiler support is required -
+so a reinterpret cast and structured-bind copy have the same effect [CE](https://godbolt.org/z/i9kzPS):
 
 ```c++
 int a[]{1,2,3,4};
 auto&& a_cp = std::bit_cast<decltype(a)>(a);
-```
 
-Back-port `bit_cast` implementations using `memcpy` are not constexpr.  
-A reinterpret cast and structured-bind copy have the same effect [CE](https://godbolt.org/z/i9kzPS):
-
-```c++
-auto [a_cp] = (decltype(a)(&)[1]) a; // Not constexpr
+// Not constexpr
+auto [a_cp] = (decltype(a)(&)[1]) a;
 ```
 
 P1997 proposes to allow array copy:
