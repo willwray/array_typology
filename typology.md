@@ -41,6 +41,8 @@ Frequent reference is made to proposal
 * [Aggregate nature](#aggregate-nature)
 * [Copy semantics, lack of](#copy-semantics-lack-of)
   * [Array decay to pointer](#array-decay-to-pointer)
+  * [Core language array copies](#core-language-array-copies)
+  * [Array copy hacks](#array-copy-hacks)
   * [Member array initialization conundrum](#member-array-initialization-conundrum)
 * [Swap](#swap)
 * [Ranges](#ranges)
@@ -149,6 +151,9 @@ as the first step in a 'two-phase initialization'.
 
 ### Copy semantics, lack of
 
+This section looks at array copy construction, or 'copy-init'
+(see [later](#assignment-lack-of) for copy-assign).
+
 #### Array decay to pointer
 
 Attempts to copy an array, or pass by value, result in decay-to-pointer [CE](https://godbolt.org/z/S3L9ZP):
@@ -158,6 +163,8 @@ Attempts to copy an array, or pass by value, result in decay-to-pointer [CE](htt
 int k[9]{9,9,9}; // decltype(k) = int[9]
 auto dk = k;     // decltype(dk) = int*
 ```
+
+#### Core language array copies
 
 There are a few specific contexts in which the language will copy arrays [CE](https://godbolt.org/z/ZizY_f) (any missing here?):
 
@@ -177,6 +184,8 @@ auto [x,y] = xy; // bindings to mutable copy int[2]{1,2}
 // lambda copy-capture copies arrays
 auto& ha = [ho]()mutable->auto&{return ho;}();
 ```
+
+#### Array copy hacks
 
 Subverting the language to our array-copying need,
 `reinterpret_cast`ing the array to view it 'wrapped' as a nested array,
