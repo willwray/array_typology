@@ -437,12 +437,13 @@ decltype(auto) i4 = iota4();
 
 This hack simulates array return from function by returning a reference to defaulted argument,
 itself a lifetime-extended rvalue reference to array.
-To avoid the compiler detecting any dangle as UB,
-and compiling it away,
-the returned array is immediately copied by structured binding
-(which calls for another level of array-wrap unless you want to expand and bind the elements themselves) [CE](https://godbolt.org/z/3wHSaf):
+A returned reference to an argument only has lifetime to the end of the full calling expression
+so the returned array is immediately copied by structured binding
+(which calls for another level of array-wrap unless you want to expand and bind the elements themselves).
+Here is an `iota` implementation for example [CE](https://godbolt.org/z/3wHSaf):
 
 ```c++
+// auto [iot4] = iota<4>();
 template <size_t N>
 constexpr auto iota(int(&&a)[1][N]={}) -> int(&)[1][N]
 {
@@ -454,17 +455,7 @@ for (auto [iota4] = iota<4>(); auto d : iota4)
     putchar('0' + d);  // 0123
 ```
 
-In C++20, the structured binding 'trick' used above should be unnecessary.
-A function taking an rvalue reference argument and returning it by value to an rvalue reference should work
-(no compiler implements it as yet).
-Returning by reference is UB so all bets are off:
-
-```c++
-A&& f(A&& a) { return a; }      // OK C++20 (should be)
-A&& f(A&& a) { return (A&&)a; } // Undefined behaviour
-```
-
-P1997 would allow to drop all these UB-riddled tricks:
+P1997 would allow to drop all these 'tricks':
 
 ```c++
 template <size_t N>
