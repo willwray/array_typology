@@ -766,7 +766,8 @@ There are no array assignment or comparison operators.
 
 ## Class Typology
 
-The C++ standard library provides a few low-level array-like types:
+For low-level array types runtime growth is considered out-of-scope.  
+The C++ standard library provides a few array-like types:
 
 * `std::array<T,N>` wraps C-array, prevents decay, enables copy
 * `std::unique_ptr<T[]>` owns a heap array of runtime length
@@ -776,14 +777,15 @@ The C++ standard library provides a few low-level array-like types:
 
 Length is either fixed at compile-time or set at runtime, as an upper limit;  
 `span` provides subspan and `string_view` supports dynamic shrinkage.  
-Runtime growth is considered out-of-scope for low-level array types.  
+
 Of the growable container types, the two most relevant are:
 
 * `std::vector<T>` owning dynamic length
 * `std::valarray<T>` owning dynamic length, numeric, RIP
 
 All provide indexing `operator[](int)` characteristic of array.  
-(So do random-access iterators, akin to pointers into arrays.)
+Random-access iterators also provide an index operator;  
+akin to pointers into arrays, they also behave as array-like.
 
 None are well suited for multi-dimensional data.  
 For multi-dim use cases, these are proposed:
