@@ -454,6 +454,16 @@ for (auto [iota4] = iota<4>(); auto d : iota4)
     putchar('0' + d);  // 0123
 ```
 
+In C++20, the structured binding 'trick' used above should be unnecessary.
+A function taking an rvalue reference argument and returning it by value to an rvalue reference should work
+(no compiler implements it as yet).
+Returning by reference is UB so all bets are off:
+
+```c++
+A&& f(A&& a) { return a; }      // OK C++20 (should be)
+A&& f(A&& a) { return (A&&)a; } // Undefined behaviour
+```
+
 P1997 would allow to drop all these UB-riddled tricks:
 
 ```c++
