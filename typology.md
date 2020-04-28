@@ -155,11 +155,11 @@ Attempts to copy an array, or pass by value, result in decay-to-pointer [CE](htt
 
 ```c++
 // Array decay to pointer
-int k[9]{9,9,9};
-auto dk = k;  // decltype(dk) = int*
+int k[9]{9,9,9}; // decltype(k) = int[9]
+auto dk = k;     // decltype(dk) = int*
 ```
 
-There are a few very specific contexts in which the language will copy arrays [CE](https://godbolt.org/z/ZizY_f) (any missing here?):
+There are a few specific contexts in which the language will copy arrays [CE](https://godbolt.org/z/ZizY_f) (any missing here?):
 
 ```c++
 // string-literal copy-inits char array
@@ -178,19 +178,24 @@ auto [x,y] = xy; // bindings to mutable copy int[2]{1,2}
 auto& ha = [ho]()mutable->auto&{return ho;}();
 ```
 
-In C++20 standard library, `bit_cast` will copy arrays of trivially copyable element type
-[CE](https://godbolt.org/z/TP-gzs).
-Prior implementations of `bit_cast` using `memcpy` are not constexpr -
-compiler support is required -
-so a reinterpret cast and structured-bind copy have the same effect [CE](https://godbolt.org/z/i9kzPS):
+Subverting the language to our array-copying need,
+`reinterpret_cast`ing the array to view it 'wrapped' as a nested array,
+then taking an `auto` structured binding
+copies the wrapped array and 'unwraps' our nested array in one go [CE](https://godbolt.org/z/W3-gRW):
 
 ```c++
 int a[]{1,2,3,4};
-auto&& a_cp = std::bit_cast<decltype(a)>(a);
+auto [a_cp] = (decltype(a)(&)[1]) a; // cast,copy,bind
 
-// Not constexpr
-auto [a_cp] = (decltype(a)(&)[1]) a;
+auto&& a_bc = __builtin_bit_cast(decltype(a),a);
+//auto&& a_bc = std::bit_cast<decltype(a)>(a); // Fail
 ```
+
+If the compiler has a 'bit_cast' builtin then it is likely to just work as shown above -
+a magical array copy, fully constexpr.
+The C++20 standard library `std::bit_cast` function template returns by value so fails to copy arrays -
+the library function is strictly less powerful than the builtin it wraps.
+
 
 P1997 proposes to allow array copy:
 
