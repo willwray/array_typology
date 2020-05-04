@@ -132,7 +132,7 @@ Conclusion; multi-dimensional arrays with contiguous layout are best left as lib
 
 ### Aggregate nature
 
-As an aggregate type with no copy-init, the only means of initializing an array is element-wise
+As an aggregate type with no copy-init, the only way to initialize an array is element-wise
 [aggregate initialization](https://en.cppreference.com/w/cpp/language/aggregate_initialization) using braces 
 (or parens since C++20, with some differences).
 The initialization is nested;
@@ -144,10 +144,12 @@ If there are missing initializers then the corresponding trailing elements are v
 (if the element type has no default constructor then all initializers must be provided).
 If the object is an array of unknown size then the size is deduced from the initializer list.
 
-Aggregate initialization is unwieldy for large arrays.
+Aggregate initialization of all elements is unwieldy for large arrays.
 However, an array is trivially constructible if its elements are.
-Large arrays of trivial type are often either value constructed or default constructed
-as the first step in a 'two-phase initialization'.
+Large arrays of trivial type are often default constructed
+(i.e. uninitialized)
+as the first step in a 'two-phase initialization'
+(not possible for constexpr arrays which require initialization).
 
 ### Copy semantics, lack of
 
@@ -166,45 +168,65 @@ auto dk = k;     // decltype(dk) = int*
 
 #### Core language array copies
 
-There are a few specific contexts in which the language will copy arrays [CE](https://godbolt.org/z/ZizY_f) (any missing here?):
+There are a few specific contexts in which the language will copy arrays [CE](https://godbolt.org/z/7QZdZE) (any missing here?):
+
+1. A char array copy-inits from a string-literal (a const char array lvalue):
 
 ```c++
-// string-literal copy-inits char array
 char hi[6]{"hello"}, ho[]="ho";
 struct C { char c[2]; } c{"c"};
+```
 
-// struct copy-init copies array members
+2. Class array members are copied when the class is copied:
+
+```c++
 struct A { int a[2]; } a{0,1};
 auto b = a;
+```
 
-// auto structured binding copies array rhs
+3. `auto` structured binding copies an array rhs:
+
+```c++
 constexpr int xy[]{1,2};
-auto [x,y] = xy; // bindings to mutable copy int[2]{1,2}
+auto [x,y] = xy;
+// x,y are bindings to elements of mutable xy copy
+```
 
-// lambda copy-capture copies arrays
-auto& ha = [ho]()mutable->auto&{return ho;}();
+4. Lambda copy-capture copies arrays into the closure:
+
+```c++
+int d[4]{1,2,3,4};
+auto dc = [d]() mutable -> auto& { return d; };
+auto&& dcr = dc();
 ```
 
 #### Array copy hacks
 
-Subverting the language to our array-copying need,
-`reinterpret_cast`ing the array to view it 'wrapped' as a nested array,
-then taking an `auto` structured binding
-copies the wrapped array and 'unwraps' our nested array in one go [CE](https://godbolt.org/z/W3-gRW):
+If a compiler has a builtin for bit_cast then it may be usable
+to make a magical array copy, fully constexpr
+(`std::bit_cast`, as a return-by-value function, fails to compile for array target type) [CE](https://godbolt.org/z/Bsj4ds):
 
 ```c++
 int a[]{1,2,3,4};
-auto [a_cp] = (decltype(a)(&)[1]) a; // cast,copy,bind
 
-auto&& a_bc = __builtin_bit_cast(decltype(a),a);
-//auto&& a_bc = std::bit_cast<decltype(a)>(a); // Fail
+auto&& a_copy = __builtin_bit_cast(decltype(a),a);
+
+std::bit_cast<decltype(a)>(a); // Fail; array return
 ```
 
-If the compiler has a 'bit_cast' builtin then it is likely to just work as shown above -
-a magical array copy, fully constexpr.
-The C++20 standard library `std::bit_cast` function template returns by value so fails to copy arrays -
-the library function is strictly less powerful than the builtin it wraps.
+Otherwise, a cast-copy-bind technique is usable for runtime code
+ [CE](https://godbolt.org/z/W3-gRW):
 
+```c++
+auto [a_cp] = (decltype(a)(&)[1]) a; // cast,copy,bind
+```
+
+1. `reinterpret_cast` the array to view it 'wrapped' as a nested array
+2. `auto` structured bind
+    * copies the wrapped array, and
+    * 'unwraps' the nested array in one go
+
+(both reinterpret cast and structured binding disallow constexpr).
 
 P1997 proposes to allow array copy:
 
@@ -219,46 +241,71 @@ a2 = b2;        // copy-assign from array lvalue
 
 Say you have an array member of a class.
 How do you initialize it from a same-array-type constructor argument in the constructor initializer list?
-
 None of the options are ideal [CE](https://godbolt.org/z/maTtAk):
 
+1. Expand the array elements by hand.  
+Not generic. Limited in practice to small N.
+
 ```c++
-// (1) Expand the array elements by hand
 template <typename X> struct X4 {
   X x[4];
-  X4(X const(&a)[4]) : x{a[0],a[1],a[2],a[3]} {}
+  constexpr X4(X const(&a)[4])
+             : x{a[0],a[1],a[2],a[3]} {}
 };
+```
 
-// (2) Expand via extra variadic template constructor
+2. Expand via extra variadic template constructor.  
+Expensive. Large array may exhaust compile resource.
+
+```c++
 template <typename X, size_t N> struct XN {
   X x[N];
   template <size_t... I>
-  XN(X const(&a)[N], index_sequence<I...>)
-         : x{a[I]...} {}
-  XN(X const(&a)[N])
-         : XN(a,make_index_sequence<N>{}) {}
+  constexpr XN(X const(&a)[N], index_sequence<I...>)
+                  : x{a[I]...} {}
+  constexpr XN(X const(&a)[N])
+                  : XN(a,make_index_sequence<N>{}) {}
+};
+```
+
+3. Cast the arg to this class type and copy construct.  
+Limited to single-member class.
+
+```c++
+// (3a) bit_cast, fully constexpr if applicable
+template <typename X, unsigned N> struct Xbc {
+  X x[N];
+  constexpr Xbc(X const(&a)[N])
+          : Xbc(std::bit_cast<Xbc>(a)) {}
 };
 
-// (3) For a single array member, reinterpret_cast
-//     the arg to this class type and copy construct
+// (3b) else reinterpret_cast, not constexpr
 template <typename X, size_t N> struct XxN {
   X x[N];
   XxN(X const(&a)[N])
-   : XxN(*reinterpret_cast<XxN const*>(&a)) {} // !!
+   : XxN(*reinterpret_cast<XxN const*>(&a)) {}
 };
+```
 
-// (4) Give up and wrap the array member and the arg
+4. Give up and wrap the array member and the argument.  
+'Russian doll' problem; how to init wrapped array?
+
+```c++
 template <typename X, std::size_t N> struct XW {
   struct wrapXN { X x[N]; } x;
   constexpr XW(wrapXN const& a) : x{a} {}
 };
+```
 
-// (5) Give up and write a copy loop in the body
+5. Give up and do the copy in the body, by loop or by algo.
+
+```c++
 template <typename X, size_t N> struct Xcp {
   X x[N];
-  Xcp(X const(&a)[N]) {for (auto& e:a) x[&e-a] = e;}
+  constexpr Xcp(X const(&a)[N]) {
+    for (auto& e:a) x[&e-a] = e;
+  }
 };
-
 ```
 
 With P1997:
@@ -266,7 +313,7 @@ With P1997:
 ```c++
 template <typename X, size_t N> struct XN {
   X x[N];
-  XN(X const(&a)[N]) : x{a} {}
+  constexpr XN(X const(&a)[N]) : x{a} {}
 };
 ```
 
@@ -284,6 +331,11 @@ This works recursively for nested arrays [CE](https://godbolt.org/z/WQCEsR).
 
 ### Ranges
 
+Array is the original range.
+It works in range-for since C++11 by virtue of array overloads for free function begin and end.
+Subsequent standards have added constexpr
+and more supported free functions.
+
 #### Free function begin, end, data, size, ssize
 
 `std::begin`, `std::end` since C++11, constexpr since C++14  
@@ -291,8 +343,6 @@ This works recursively for nested arrays [CE](https://godbolt.org/z/WQCEsR).
 `std::ssize` since C++20  
 `std::ranges` versions of all the above plus range concepts C++20
 
-Array is the original range.
-It works in range-for since C++11 by virtue of array overloads for free function begin and end.
 It is supported by C++20 ranges; it fully models the  `contiguous_range` concept [CE](https://godbolt.org/z/tKVY-Y)
 
 ```c++
@@ -302,6 +352,7 @@ auto rotate(std::ranges::contiguous_range auto& a)
      std::swap(curr,next);
   return a;
 }
+
 int ints[]{1,2,3};
 
 for (int i : rotate(ints))
@@ -569,7 +620,7 @@ aggregate type, a contiguous sequence
 of one element type.
 
 Aggregate initialization, from a braced initializer list, is the only  
-way to initialize a value of array type (currently, see [exceptions](#copy-semantics-lack-of)).
+way to initialize a value of array type (currently, see [exceptions](#core-language-array-copies)).
 
 Values of array type are unstable in use, eagerly decaying to a  
 pointer to the first element of the array.
@@ -785,6 +836,62 @@ For multi-dim use cases, these are proposed:
 * `std::mdspan` a multi-dimensional, non-owning, span
 
 ToDo: classify and list properties
+
+### APIs for arrays and other static size types
+
+Ideally, APIs that accept static-sized types should pass the static type information down
+to the implementation where it can be used for optimizations.
+
+Unfortunately, this is currently harder than it ought to be.
+Barry Revzin's blog
+[The constexpr array size problem](https://brevzin.github.io/c++/2020/02/05/constexpr-array-size/)
+gives a detailed explanation.
+
+#### The constexpr conundrum
+
+Take a function like the `std::size` array overload;
+
+```C++
+template <size_t N>
+constexpr size_t size(auto const(&)[N]) { return N; }
+```
+
+As an array-accepting API it is necessarily pass-by-reference
+(though the function apparently makes no use of the argument - it is not even named).
+
+This `size` implementation is constexpr even for non-constexpr arguments:
+
+```C++
+static_assert( size({1,2,3}) == 3 ); // OK constexpr
+
+long a[4];       // non-constexpr lvalue
+bool b[size(a)]; // OK constexpr for non-constexpr 'a'
+```
+
+However, `size` fails to be a constant expression for reference-type argument:
+
+```C++
+ auto& ar = a;
+ bool bb[size(ar)]; // error: variable length array
+```
+
+This is always the case when `size` is called on an array argument,
+even if the argument's type is explicitly specified as an array
+with manifestly static size:
+
+```C++
+auto s = []<size_t N>(auto const (&r)[N]) {
+  constexpr auto s = size(r); // error, not constexpr
+  return s;
+}(a);
+```
+
+In this case the static size is made available
+anyway as the deduced
+template argument `N`.
+In general, though, reference arguments fail constexpr for
+anything that refers to the reference -
+pretty much all usage.
 
 ## Epilogue
 
