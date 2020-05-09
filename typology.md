@@ -839,13 +839,13 @@ ToDo: classify and list properties
 
 ### APIs for arrays and other static size types
 
-Ideally, APIs that accept static-sized types should pass the static type information down
-to the implementation where it can be used for optimizations.
-
-Unfortunately, this is currently harder than it ought to be.
+Ideally, APIs that accept static-sized ranges should pass the static size down
+to the data processing routines where it can be used for optimizations.
+Despite great constexpr progress since C++11 it is still not straightforward
+to maintain constexpr size info through APIs in C++20.
+For example, the std::span constructors needed late changes.
 Barry Revzin's blog
-[The constexpr array size problem](https://brevzin.github.io/c++/2020/02/05/constexpr-array-size/)
-gives a detailed explanation.
+[The constexpr array size problem](https://brevzin.github.io/c++/2020/02/05/constexpr-array-size/).
 
 #### The constexpr conundrum
 
@@ -857,41 +857,58 @@ constexpr size_t size(auto const(&)[N]) { return N; }
 ```
 
 As an array-accepting API it is necessarily pass-by-reference
-(though the function apparently makes no use of the argument - it is not even named).
+(though the function apparently makes no use of the argument which it is not even named).
 
 This `size` implementation is constexpr even for non-constexpr arguments:
 
 ```C++
 static_assert( size({1,2,3}) == 3 ); // OK constexpr
 
-long a[4];       // non-constexpr lvalue
-bool b[size(a)]; // OK constexpr for non-constexpr 'a'
+long a[4];       // non-constexpr array variable 'a'
+bool A[size(a)]; // OK constexpr for non-constexpr 'a'
 ```
 
-However, `size` fails to be a constant expression for reference-type argument:
+However, `size` fails to be a constant expression when passed a reference
+to a local array (automatic storage duration):
 
 ```C++
- auto& ar = a;
- bool bb[size(ar)]; // error: variable length array
+auto& r = a;
+bool R[size(r)]; // error: size not constexpr
 ```
 
-This is always the case when `size` is called on an array argument,
-even if the argument's type is explicitly specified as an array
-with manifestly static size:
+Static storage duration is needed for a constexpr reference:
 
 ```C++
-auto s = []<size_t N>(auto const (&r)[N]) {
-  constexpr auto s = size(r); // error, not constexpr
-  return s;
-}(a);
+static long s[4];
+auto& z = s;
+bool S[size(z)]; // OK constexpr again
 ```
 
-In this case the static size is made available
-anyway as the deduced
-template argument `N`.
-In general, though, reference arguments fail constexpr for
+However, wrap the reference and, again, it loses constexpr:
+
+```C++
+struct ref_wrap { decltype(s)& ref; } wrap{s}; 
+bool W[size(wrap.ref)]; // error: size not constexpr
+```
+
+Similarly, when `size` is called on an array argument -
+necessarily a reference - it is never constexpr, even if the passed array is static:
+
+```C++
+auto s = []<size_t N>(auto const (&ar)[N]) {
+  constexpr auto n = size(ar); // error, not constexpr
+  return n;
+}(s);
+```
+
+In general, reference arguments fail constexpr for
 anything that refers to the reference -
 pretty much all usage.
+The argument type above was explicitly specified as array
+with manifestly static size;
+the deduced template argument `N`,
+
+
 
 ## Epilogue
 
